@@ -185,6 +185,13 @@ dist\mineru-build\mineru.exe -p test.pdf -o output
 - API/Web (fastapi, gradio)
 - 云服务 (boto3)
 
+**跨平台兼容性**:
+- PyTorch 版本要求放宽为 `>=2.0.0,<3` 以支持所有平台
+- macOS 13 (Intel): 支持 PyTorch 2.0.0-2.2.x
+- macOS 14 (ARM): 支持 PyTorch 2.0.0-2.4.x+
+- Windows: 支持 PyTorch 2.0.0-2.6.x+
+- 其他依赖也已调整为跨平台兼容的版本范围
+
 ### 2. `mineru-minimal.spec`
 
 PyInstaller配置文件，定义：
@@ -425,6 +432,24 @@ arch -x86_64 ./mineru --version
 
 # 如果遇到问题，可以强制安装 ARM64 版本
 pip install --force-reinstall torch torchvision onnxruntime
+```
+
+### 9. macOS 13 上 PyTorch 版本过高错误
+
+**症状**: `ERROR: Could not find a version that satisfies the requirement torch>=2.6.0`
+
+**原因**: macOS 13 (Intel) 上 PyTorch 最高只支持到 2.2.x 版本
+
+**解决**:
+```bash
+# requirements-minimal.txt 已调整为 torch>=2.0.0,<3 支持跨平台
+# 如果使用自定义 requirements，请确保 PyTorch 版本要求：
+# - macOS 13 (Intel): torch>=2.0.0,<=2.2.2
+# - macOS 14 (ARM): torch>=2.0.0,<=2.4.x
+# - Windows: torch>=2.0.0,<3
+
+# 直接使用 requirements-minimal.txt 即可
+pip install -r requirements-minimal.txt
 ```
 
 ---
