@@ -174,15 +174,11 @@ class LazyModulePatcher:
                 elif fullname == 'torch._jit_internal':
                     # Patch _check_overload_body to skip validation in frozen environment
                     if hasattr(module, '_check_overload_body'):
-                        _original_check_overload_body = module._check_overload_body
-
                         def patched_check_overload_body(func):
                             """Skip overload body checks in frozen environment"""
-                            try:
-                                return _original_check_overload_body(func)
-                            except (OSError, RuntimeError):
-                                # Skip validation in PyInstaller environment
-                                return None
+                            # In PyInstaller, function objects don't have .ast attribute
+                            # Simply skip the validation
+                            return None
 
                         module._check_overload_body = patched_check_overload_body
                         print("[Runtime Hook] ✓ Patched torch._jit_internal._check_overload_body")
