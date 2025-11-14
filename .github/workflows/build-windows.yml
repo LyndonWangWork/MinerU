@@ -3,7 +3,9 @@ name: Build MinerU Windows Executable
 on:
   push:
     branches:
-      - build-windows
+      - master      # Trigger on push to master branch
+      - main        # Trigger on push to main branch (if using main)
+      - build
   workflow_dispatch:
     inputs:
       test_mode:
