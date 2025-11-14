@@ -34,9 +34,9 @@ class TorchCImportHook:
                     # Error occurred during import - try to get partially loaded module
                     module = sys.modules.get(fullname)
                     if module is None:
-                        print(f"[Runtime Hook] ✗ torch._C import failed completely: {e}")
+                        print(f"[Runtime Hook] [FAIL] torch._C import failed completely: {e}")
                         raise
-                    print(f"[Runtime Hook] ⚠ torch._C partially loaded despite error: {e}")
+                    print(f"[Runtime Hook] [WARN] torch._C partially loaded despite error: {e}")
                 else:
                     raise
 
@@ -55,9 +55,9 @@ class TorchCImportHook:
                         raise
 
                 module.add_docstr = _silent_add_docstr
-                print("[Runtime Hook] ✓ Patched torch._C.add_docstr")
+                print("[Runtime Hook] [OK] Patched torch._C.add_docstr")
             else:
-                print("[Runtime Hook] ⚠ torch._C has no add_docstr attribute")
+                print("[Runtime Hook] [WARN] torch._C has no add_docstr attribute")
 
             return module
         finally:
@@ -66,7 +66,7 @@ class TorchCImportHook:
 
 # Install torch._C import hook FIRST (highest priority)
 sys.meta_path.insert(0, TorchCImportHook())
-print("[Runtime Hook] ✓ Installed torch._C import hook")
+print("[Runtime Hook] [OK] Installed torch._C import hook")
 
 # Monkey-patch inspect.getsource and related functions to handle frozen modules
 _original_getsource = inspect.getsource
@@ -134,13 +134,13 @@ class LazyModulePatcher:
                     def patched_get_docstring_indentation_level(func):
                         return 0
                     module.get_docstring_indentation_level = patched_get_docstring_indentation_level
-                    print("[Runtime Hook] ✓ Patched transformers.utils.doc")
+                    print("[Runtime Hook] [OK] Patched transformers.utils.doc")
 
                 elif fullname == 'torch.utils._config_module':
                     def patched_get_assignments_with_compile_ignored_comments(filepath):
                         return {}
                     module.get_assignments_with_compile_ignored_comments = patched_get_assignments_with_compile_ignored_comments
-                    print("[Runtime Hook] ✓ Patched torch.utils._config_module")
+                    print("[Runtime Hook] [OK] Patched torch.utils._config_module")
 
                 elif fullname == 'torch._sources':
                     # Patch parse_def to handle PyInstaller frozen environment
@@ -169,7 +169,7 @@ class LazyModulePatcher:
                             )
 
                     module.parse_def = patched_parse_def
-                    print("[Runtime Hook] ✓ Patched torch._sources.parse_def")
+                    print("[Runtime Hook] [OK] Patched torch._sources.parse_def")
 
                 elif fullname == 'torch._jit_internal':
                     # Patch _check_overload_body to skip validation in frozen environment
@@ -181,9 +181,9 @@ class LazyModulePatcher:
                             return None
 
                         module._check_overload_body = patched_check_overload_body
-                        print("[Runtime Hook] ✓ Patched torch._jit_internal._check_overload_body")
+                        print("[Runtime Hook] [OK] Patched torch._jit_internal._check_overload_body")
             except Exception as e:
-                print(f"[Runtime Hook] ✗ Failed to patch {fullname}: {e}")
+                print(f"[Runtime Hook] [FAIL] Failed to patch {fullname}: {e}")
 
             return module
         finally:
@@ -192,4 +192,4 @@ class LazyModulePatcher:
 
 # Install the import hook
 sys.meta_path.insert(0, LazyModulePatcher())
-print("[Runtime Hook] ✓ Installed lazy module patcher")
+print("[Runtime Hook] [OK] Installed lazy module patcher")
