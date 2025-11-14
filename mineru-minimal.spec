@@ -19,6 +19,22 @@ try:
 except Exception as e:
     print(f"Warning: Could not collect torch binaries: {e}")
 
+# On Windows, explicitly add ALL DLLs from torch/lib directory
+if sys.platform == 'win32':
+    try:
+        import torch
+        torch_lib_dir = os.path.join(os.path.dirname(torch.__file__), 'lib')
+        if os.path.exists(torch_lib_dir):
+            print(f"Adding all DLLs from: {torch_lib_dir}")
+            for filename in os.listdir(torch_lib_dir):
+                if filename.endswith(('.dll', '.pyd')):
+                    filepath = os.path.join(torch_lib_dir, filename)
+                    # Add to torch/lib to maintain structure
+                    binaries.append((filepath, 'torch/lib'))
+                    print(f"  Added: {filename}")
+    except Exception as e:
+        print(f"Warning: Could not add torch DLLs manually: {e}")
+
 try:
     binaries += collect_dynamic_libs('torchvision')
 except Exception as e:
@@ -162,7 +178,7 @@ a = Analysis(
     binaries=binaries,  # Include collected PyTorch DLLs
     datas=datas,
     hiddenimports=hiddenimports,
-    hookspath=[],
+    hookspath=['.'],  # Look for hooks in current directory (hook-torch.py)
     hooksconfig={},
     runtime_hooks=['hook-transformers-doc.py'],
     excludes=excludes,
