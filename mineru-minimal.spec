@@ -44,26 +44,8 @@ if sys.platform == 'win32':
     except Exception as e:
         print(f"Warning: Could not add torch DLLs manually: {e}")
 
-    # Add Visual C++ Runtime DLLs (critical dependencies for torch)
-    try:
-        import os
-        system_root = os.environ.get('SystemRoot', 'C:\\Windows')
-        system32 = os.path.join(system_root, 'System32')
-
-        # List of Visual C++ runtime DLLs that torch commonly needs
-        vc_dlls = [
-            'msvcp140.dll',
-            'vcruntime140.dll',
-            'vcruntime140_1.dll',
-        ]
-
-        for dll_name in vc_dlls:
-            dll_path = os.path.join(system32, dll_name)
-            if os.path.exists(dll_path):
-                binaries.append((dll_path, '.'))
-                print(f"  Added VC++ Runtime: {dll_name}")
-    except Exception as e:
-        print(f"Warning: Could not add VC++ runtime DLLs: {e}")
+    # Note: Visual C++ Runtime is installed system-wide via GitHub Actions workflow
+    # No need to bundle VC++ DLLs - they will be available at runtime
 
 try:
     binaries += collect_dynamic_libs('torchvision')

@@ -50,6 +50,16 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
 
+      - name: Install Visual C++ Redistributable (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Install Visual C++ 2015-2022 Redistributable (required for PyTorch DLLs)
+          Write-Host "Installing Visual C++ Redistributable..."
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile vc_redist.x64.exe
+          Start-Process -FilePath "vc_redist.x64.exe" -ArgumentList "/install", "/quiet", "/norestart" -Wait
+          Write-Host "Visual C++ Redistributable installed successfully"
+
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
