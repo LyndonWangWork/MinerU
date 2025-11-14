@@ -21,14 +21,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        # Build matrix for cross-platform support
+        # Build matrix for macOS support only
         # All platforms use mineru-minimal.spec with the same configuration
         include:
-          - os: windows-latest
-            python-version: '3.11'
-            artifact-name: mineru-windows-x64
-            output-path: dist/mineru-build
-            executable: mineru.exe
           - os: macos-13  # Intel x64 architecture
             python-version: '3.11'
             artifact-name: mineru-macos-x64
@@ -50,29 +45,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
 
-      - name: Install Visual C++ Redistributable (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          # Install Visual C++ 2015-2022 Redistributable (required for PyTorch DLLs)
-          Write-Host "Installing Visual C++ Redistributable..."
-          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile vc_redist.x64.exe
-          Start-Process -FilePath "vc_redist.x64.exe" -ArgumentList "/install", "/quiet", "/norestart" -Wait
-          Write-Host "Visual C++ Redistributable installed successfully"
-
       - name: Install system dependencies (macOS)
-        if: runner.os == 'macOS'
         run: |
           brew install upx
-
-      - name: Install system dependencies (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          # Download and install UPX
-          Invoke-WebRequest -Uri "https://github.com/upx/upx/releases/download/v4.2.1/upx-4.2.1-win64.zip" -OutFile upx.zip
-          Expand-Archive -Path upx.zip -DestinationPath .
-          Move-Item -Path upx-*-win64/upx.exe -Destination C:/Windows/System32/
 
       - name: Upgrade pip and install build tools
         run: |
@@ -110,26 +85,15 @@ jobs:
           ${{ matrix.output-path }}/${{ matrix.executable }} --version
 
       - name: Create archive
-        shell: bash
         run: |
           cd dist
-          if [ "${{ runner.os }}" == "Windows" ]; then
-            7z a -tzip ../${{ matrix.artifact-name }}.zip mineru-build/
-          else
-            tar -czf ../${{ matrix.artifact-name }}.tar.gz mineru-build/
-          fi
+          tar -czf ../${{ matrix.artifact-name }}.tar.gz mineru-build/
           cd ..
 
       - name: Calculate checksums
-        shell: bash
         run: |
-          if [ "${{ runner.os }}" == "Windows" ]; then
-            sha256sum ${{ matrix.artifact-name }}.zip > ${{ matrix.artifact-name }}.zip.sha256
-            cat ${{ matrix.artifact-name }}.zip.sha256
-          else
-            shasum -a 256 ${{ matrix.artifact-name }}.tar.gz > ${{ matrix.artifact-name }}.tar.gz.sha256
-            cat ${{ matrix.artifact-name }}.tar.gz.sha256
-          fi
+          shasum -a 256 ${{ matrix.artifact-name }}.tar.gz > ${{ matrix.artifact-name }}.tar.gz.sha256
+          cat ${{ matrix.artifact-name }}.tar.gz.sha256
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -177,9 +141,8 @@ jobs:
       - name: Verify checksums exist
         run: |
           echo "Verifying build artifacts..."
-          test -f mineru-windows-x64/mineru-windows-x64.zip.sha256 && echo "✓ Windows x64 checksum found"
-          test -f mineru-macos-x64/mineru-macos-x64.tar.gz.sha256 && echo "✓ macOS x64 (Intel) checksum found"
-          test -f mineru-macos-arm64/mineru-macos-arm64.tar.gz.sha256 && echo "✓ macOS ARM64 (Apple Silicon) checksum found"
+          test -f mineru-macos-x64/mineru-macos-x64.tar.gz.sha256 && echo "[OK] macOS x64 (Intel) checksum found"
+          test -f mineru-macos-arm64/mineru-macos-arm64.tar.gz.sha256 && echo "[OK] macOS ARM64 (Apple Silicon) checksum found"
           echo "All checksums verified!"
 
       - name: Summary
@@ -187,9 +150,8 @@ jobs:
           echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Artifacts Generated:" >> $GITHUB_STEP_SUMMARY
-          echo "- Windows x64: \`mineru-windows-x64.zip\`" >> $GITHUB_STEP_SUMMARY
           echo "- macOS x64 (Intel): \`mineru-macos-x64.tar.gz\`" >> $GITHUB_STEP_SUMMARY
           echo "- macOS ARM64 (Apple Silicon): \`mineru-macos-arm64.tar.gz\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### File Sizes:" >> $GITHUB_STEP_SUMMARY
-          du -h mineru-windows-x64/* mineru-macos-x64/* mineru-macos-arm64/* | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY
+          du -h mineru-macos-x64/* mineru-macos-arm64/* | sed 's/^/- /' >> $GITHUB_STEP_SUMMARY
