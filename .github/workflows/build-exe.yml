@@ -76,7 +76,7 @@ jobs:
 
       - name: Verify installation
         run: |
-          python -c "import mineru; print(f'MinerU version: {mineru.__version__}')"
+          python -c "from mineru.version import __version__; print(f'MinerU version: {__version__}')"
           mineru --version
 
       - name: Build executable with PyInstaller
