@@ -29,7 +29,22 @@
 
 ## 🚀 使用GitHub Actions自动构建
 
-### 方法1: 推送版本标签触发（推荐）
+### 方法1: 自动触发（推荐）
+
+每次推送到 `master` 或 `main` 分支时，会自动触发构建：
+
+```bash
+# 提交代码并推送
+git add .
+git commit -m "Update code"
+git push origin master
+```
+
+构建完成后，可以在 Actions 页面下载构建产物。
+
+### 方法2: 版本标签触发
+
+创建版本标签时触发构建，并自动创建 Release：
 
 ```bash
 # 创建并推送版本标签
@@ -37,7 +52,9 @@ git tag v1.0.0
 git push origin v1.0.0
 ```
 
-### 方法2: 手动触发
+标签推送会触发构建，并自动创建 GitHub Release（草稿状态）。
+
+### 方法3: 手动触发
 
 1. 访问你的GitHub仓库
 2. 点击 `Actions` 选项卡
@@ -56,6 +73,12 @@ git push origin v1.0.0
    - `mineru-macos-arm64.tar.gz` (macOS Apple Silicon/M1/M2/M3)
 
 如果是标签触发，还会自动创建GitHub Release（草稿状态），可以发布正式版本。
+
+**注意事项**:
+- 自动构建的产物会保留30天
+- 只有标签推送才会创建 GitHub Release
+- 每次构建大约需要 15-30 分钟（3个平台并行）
+- 建议在本地充分测试后再推送到主分支
 
 **macOS用户注意**: 请根据你的Mac芯片类型选择对应版本：
 - Intel芯片Mac (2020年及之前): 下载 `mineru-macos-x64.tar.gz`
@@ -174,9 +197,13 @@ PyInstaller配置文件，定义：
 ### 3. `.github/workflows/build-exe.yml`
 
 GitHub Actions工作流，包含：
-- **触发条件**: 版本标签推送或手动触发
+- **触发条件**:
+  - 推送到 `master` 或 `main` 分支（自动构建）
+  - 推送版本标签 `v*`（自动构建 + 创建 Release）
+  - 手动触发
 - **构建矩阵**: Windows x64 + macOS Intel (x64) + macOS Apple Silicon (ARM64)
 - **Runner配置**:
+  - `windows-latest`: Windows x64
   - `macos-13`: Intel x64 架构
   - `macos-14`: Apple Silicon ARM64 架构 (M1/M2/M3)
 - **构建步骤**:
@@ -186,8 +213,8 @@ GitHub Actions工作流，包含：
   4. 运行PyInstaller（自动检测架构）
   5. 创建压缩包
   6. 计算SHA256校验和
-  7. 上传artifacts
-  8. 创建Release (标签触发时)
+  7. 上传artifacts（保留30天）
+  8. 创建Release（仅标签触发时）
 
 ---
 
