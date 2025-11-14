@@ -6,6 +6,29 @@ which fails when source code is not available (compiled to bytecode)
 
 import sys
 import inspect
+import os
+
+# CRITICAL: Add DLL search paths for Windows
+# This fixes "DLL initialization routine failed" errors on Windows
+if sys.platform == 'win32':
+    try:
+        # Get the _internal directory where PyInstaller extracts DLLs
+        if hasattr(sys, '_MEIPASS'):
+            internal_dir = sys._MEIPASS
+
+            # Add torch/lib directory to DLL search path
+            torch_lib_dir = os.path.join(internal_dir, 'torch', 'lib')
+            if os.path.exists(torch_lib_dir):
+                # Python 3.8+ has os.add_dll_directory
+                if hasattr(os, 'add_dll_directory'):
+                    os.add_dll_directory(torch_lib_dir)
+                    print(f"[Runtime Hook] [OK] Added DLL search path: {torch_lib_dir}")
+                else:
+                    # Fallback: add to PATH
+                    os.environ['PATH'] = torch_lib_dir + os.pathsep + os.environ.get('PATH', '')
+                    print(f"[Runtime Hook] [OK] Added to PATH: {torch_lib_dir}")
+    except Exception as e:
+        print(f"[Runtime Hook] [WARN] Could not add DLL search paths: {e}")
 
 # CRITICAL: Intercept torch._C import to patch add_docstr
 # This fixes "RuntimeError: function 'conv1d' already has a docstring" on macOS ARM64
