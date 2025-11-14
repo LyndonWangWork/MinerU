@@ -5,10 +5,29 @@ Supports: Windows and macOS
 """
 
 import sys
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_dynamic_libs
 import os
 
 block_cipher = None
+
+# Collect binaries (DLLs for Windows, .so for Linux, .dylib for macOS)
+binaries = []
+
+# Collect PyTorch binaries (CRITICAL for Windows DLL loading)
+try:
+    binaries += collect_dynamic_libs('torch')
+except Exception as e:
+    print(f"Warning: Could not collect torch binaries: {e}")
+
+try:
+    binaries += collect_dynamic_libs('torchvision')
+except Exception as e:
+    print(f"Warning: Could not collect torchvision binaries: {e}")
+
+try:
+    binaries += collect_dynamic_libs('onnxruntime')
+except Exception as e:
+    print(f"Warning: Could not collect onnxruntime binaries: {e}")
 
 # Collect data files
 datas = []
@@ -140,7 +159,7 @@ excludes = [
 a = Analysis(
     ['mineru_entry.py'],
     pathex=[],
-    binaries=[],
+    binaries=binaries,  # Include collected PyTorch DLLs
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],
