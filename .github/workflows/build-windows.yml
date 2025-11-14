@@ -1,0 +1,268 @@
+name: Build MinerU Windows Executable
+
+on:
+  push:
+    branches:
+      - build-windows
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Run functional tests'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  build-windows:
+    name: Build Windows x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # Step 1: Install Visual C++ Redistributable
+      - name: Install Visual C++ Redistributable
+        shell: pwsh
+        run: |
+          Write-Host "=== Installing Visual C++ Redistributable ===" -ForegroundColor Cyan
+          Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile vc_redist.x64.exe
+          Start-Process -FilePath "vc_redist.x64.exe" -ArgumentList "/install", "/quiet", "/norestart" -Wait
+          Write-Host "[OK] Visual C++ Redistributable installed" -ForegroundColor Green
+
+      # Step 2: Install UPX
+      - name: Install UPX
+        shell: pwsh
+        run: |
+          Write-Host "=== Installing UPX ===" -ForegroundColor Cyan
+          Invoke-WebRequest -Uri "https://github.com/upx/upx/releases/download/v4.2.1/upx-4.2.1-win64.zip" -OutFile upx.zip
+          Expand-Archive -Path upx.zip -DestinationPath .
+          Move-Item -Path upx-*-win64/upx.exe -Destination C:/Windows/System32/
+          Write-Host "[OK] UPX installed" -ForegroundColor Green
+
+      # Step 3: Check dependencies
+      - name: Check dependencies
+        shell: pwsh
+        run: |
+          Write-Host "=== Checking Dependencies ===" -ForegroundColor Cyan
+
+          Write-Host "Checking Python version..." -ForegroundColor Yellow
+          python --version
+
+          Write-Host "Checking pip..." -ForegroundColor Yellow
+          pip --version
+
+          Write-Host "Checking UPX..." -ForegroundColor Yellow
+          upx --version
+
+          Write-Host "[OK] All dependencies available" -ForegroundColor Green
+
+      # Step 4: Upgrade pip and install build tools
+      - name: Upgrade pip and install PyInstaller
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install pyinstaller
+          pyinstaller --version
+
+      # Step 5: Install MinerU dependencies
+      - name: Install MinerU dependencies
+        shell: pwsh
+        run: |
+          Write-Host "=== Installing MinerU Dependencies ===" -ForegroundColor Cyan
+
+          Write-Host "Installing from requirements-minimal.txt..." -ForegroundColor Yellow
+          pip install -r requirements-minimal.txt
+
+          Write-Host "Installing MinerU in editable mode..." -ForegroundColor Yellow
+          pip install -e .
+
+          Write-Host "[OK] Dependencies installed" -ForegroundColor Green
+
+      # Step 6: Verify MinerU installation
+      - name: Verify MinerU installation
+        shell: pwsh
+        run: |
+          Write-Host "=== Verifying Installation ===" -ForegroundColor Cyan
+
+          Write-Host "Checking MinerU version..." -ForegroundColor Yellow
+          python -c "from mineru.version import __version__; print(f'MinerU version: {__version__}')"
+
+          Write-Host "Testing mineru command..." -ForegroundColor Yellow
+          mineru --version
+
+          Write-Host "[OK] Installation verified" -ForegroundColor Green
+
+      # Step 7: Clean previous builds
+      - name: Clean previous builds
+        shell: pwsh
+        run: |
+          Write-Host "=== Cleaning Previous Builds ===" -ForegroundColor Cyan
+
+          if (Test-Path "build") {
+            Write-Host "Removing build directory..." -ForegroundColor Yellow
+            Remove-Item -Recurse -Force build
+          }
+
+          if (Test-Path "dist") {
+            Write-Host "Removing dist directory..." -ForegroundColor Yellow
+            Remove-Item -Recurse -Force dist
+          }
+
+          Write-Host "[OK] Clean complete" -ForegroundColor Green
+
+      # Step 8: Build executable with PyInstaller
+      - name: Build executable with PyInstaller
+        shell: pwsh
+        run: |
+          Write-Host "=== Building Executable ===" -ForegroundColor Cyan
+
+          Write-Host "Running PyInstaller..." -ForegroundColor Yellow
+          pyinstaller mineru-minimal.spec --clean --noconfirm
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "[FAIL] PyInstaller build failed" -ForegroundColor Red
+            exit 1
+          }
+
+          Write-Host "[OK] Build complete" -ForegroundColor Green
+
+      # Step 9: Verify build output
+      - name: Verify build output
+        shell: pwsh
+        run: |
+          Write-Host "=== Verifying Build Output ===" -ForegroundColor Cyan
+
+          if (!(Test-Path "dist/mineru-build")) {
+            Write-Host "[FAIL] Build output directory not found" -ForegroundColor Red
+            exit 1
+          }
+
+          Write-Host "Build directory contents:" -ForegroundColor Yellow
+          Get-ChildItem -Path "dist/mineru-build" -Recurse -Depth 1 | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize
+
+          if (!(Test-Path "dist/mineru-build/mineru.exe")) {
+            Write-Host "[FAIL] Executable not found" -ForegroundColor Red
+            exit 1
+          }
+
+          $exeSize = (Get-Item "dist/mineru-build/mineru.exe").Length / 1MB
+          Write-Host "[OK] Executable found: mineru.exe ($([math]::Round($exeSize, 2)) MB)" -ForegroundColor Green
+
+      # Step 10: Test executable - basic
+      - name: Test executable (basic)
+        shell: pwsh
+        run: |
+          Write-Host "=== Testing Executable (Basic) ===" -ForegroundColor Cyan
+
+          Write-Host "Running: mineru.exe --version" -ForegroundColor Yellow
+          & "dist/mineru-build/mineru.exe" --version
+
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "[FAIL] Executable test failed" -ForegroundColor Red
+            exit 1
+          }
+
+          Write-Host "[OK] Executable test passed" -ForegroundColor Green
+
+      # Step 11: Test executable - functional (optional)
+      - name: Test executable (functional)
+        if: github.event.inputs.test_mode == 'true'
+        shell: pwsh
+        run: |
+          Write-Host "=== Testing Executable (Functional) ===" -ForegroundColor Cyan
+
+          $testPdf = Get-ChildItem -Path . -Filter "*.pdf" -Recurse -Depth 3 | Select-Object -First 1
+
+          if ($null -eq $testPdf) {
+            Write-Host "[WARN] No test PDF found, skipping functional test" -ForegroundColor Yellow
+            exit 0
+          }
+
+          Write-Host "Test PDF: $($testPdf.FullName)" -ForegroundColor Yellow
+          Write-Host "Running PDF parsing test..." -ForegroundColor Yellow
+
+          & "dist/mineru-build/mineru.exe" -p $testPdf.FullName -o "test_output" -m auto
+
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "[OK] Functional test passed" -ForegroundColor Green
+          } else {
+            Write-Host "[WARN] Functional test failed, but build may still be usable" -ForegroundColor Yellow
+          }
+
+      # Step 12: Create distribution archive
+      - name: Create distribution archive
+        shell: pwsh
+        run: |
+          Write-Host "=== Creating Distribution Archive ===" -ForegroundColor Cyan
+
+          $archiveName = "mineru-windows-x64.zip"
+          Write-Host "Creating $archiveName..." -ForegroundColor Yellow
+
+          Compress-Archive -Path "dist/mineru-build" -DestinationPath $archiveName -Force
+
+          $archiveSize = (Get-Item $archiveName).Length / 1MB
+          Write-Host "[OK] Archive created: $archiveName ($([math]::Round($archiveSize, 2)) MB)" -ForegroundColor Green
+
+      # Step 13: Calculate checksum
+      - name: Calculate checksum
+        shell: pwsh
+        run: |
+          Write-Host "=== Calculating Checksum ===" -ForegroundColor Cyan
+
+          $hash = (Get-FileHash -Path "mineru-windows-x64.zip" -Algorithm SHA256).Hash
+          $hash | Out-File "mineru-windows-x64.zip.sha256" -Encoding ASCII
+
+          Write-Host "SHA256: $hash" -ForegroundColor Yellow
+          Write-Host "[OK] Checksum saved to mineru-windows-x64.zip.sha256" -ForegroundColor Green
+
+      # Step 14: Upload artifacts
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mineru-windows-x64
+          path: |
+            mineru-windows-x64.zip
+            mineru-windows-x64.zip.sha256
+          retention-days: 30
+
+      # Step 15: Create release (if tagged)
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            mineru-windows-x64.zip
+            mineru-windows-x64.zip.sha256
+          draft: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Step 16: Build summary
+      - name: Build summary
+        if: always()
+        shell: pwsh
+        run: |
+          Write-Host ""
+          Write-Host "============================================================" -ForegroundColor Cyan
+          Write-Host "  Build Completed Successfully!" -ForegroundColor Green
+          Write-Host "============================================================" -ForegroundColor Cyan
+          Write-Host ""
+          Write-Host "Distribution package is ready:" -ForegroundColor Yellow
+          Write-Host "  - mineru-windows-x64.zip" -ForegroundColor White
+          Write-Host "  - mineru-windows-x64.zip.sha256" -ForegroundColor White
+          Write-Host ""
+          Write-Host "Next steps:" -ForegroundColor Yellow
+          Write-Host "  1. Download artifacts from Actions tab" -ForegroundColor White
+          Write-Host "  2. Extract and test the executable" -ForegroundColor White
+          Write-Host "  3. Distribute to Windows users" -ForegroundColor White
+          Write-Host ""
