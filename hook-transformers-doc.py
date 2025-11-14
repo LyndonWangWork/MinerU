@@ -111,7 +111,8 @@ class LazyModulePatcher:
 
     def find_module(self, fullname, path=None):
         # Intercept these specific modules
-        if fullname in ('transformers.utils.doc', 'torch.utils._config_module'):
+        if fullname in ('transformers.utils.doc', 'torch.utils._config_module',
+                       'torch._sources', 'torch._jit_internal'):
             return self
         return None
 
@@ -140,6 +141,51 @@ class LazyModulePatcher:
                         return {}
                     module.get_assignments_with_compile_ignored_comments = patched_get_assignments_with_compile_ignored_comments
                     print("[Runtime Hook] ✓ Patched torch.utils._config_module")
+
+                elif fullname == 'torch._sources':
+                    # Patch parse_def to handle PyInstaller frozen environment
+                    import ast
+                    _original_parse_def = module.parse_def
+
+                    def patched_parse_def(filename):
+                        """Return a dummy function def for frozen/compiled code"""
+                        try:
+                            return _original_parse_def(filename)
+                        except (OSError, RuntimeError, SyntaxError) as e:
+                            # Return a minimal valid AST for a function definition
+                            # This satisfies torch's JIT compiler in frozen environments
+                            return ast.FunctionDef(
+                                name='_dummy',
+                                args=ast.arguments(
+                                    posonlyargs=[],
+                                    args=[],
+                                    kwonlyargs=[],
+                                    kw_defaults=[],
+                                    defaults=[]
+                                ),
+                                body=[ast.Pass()],
+                                decorator_list=[],
+                                returns=None
+                            )
+
+                    module.parse_def = patched_parse_def
+                    print("[Runtime Hook] ✓ Patched torch._sources.parse_def")
+
+                elif fullname == 'torch._jit_internal':
+                    # Patch _check_overload_body to skip validation in frozen environment
+                    if hasattr(module, '_check_overload_body'):
+                        _original_check_overload_body = module._check_overload_body
+
+                        def patched_check_overload_body(func):
+                            """Skip overload body checks in frozen environment"""
+                            try:
+                                return _original_check_overload_body(func)
+                            except (OSError, RuntimeError):
+                                # Skip validation in PyInstaller environment
+                                return None
+
+                        module._check_overload_body = patched_check_overload_body
+                        print("[Runtime Hook] ✓ Patched torch._jit_internal._check_overload_body")
             except Exception as e:
                 print(f"[Runtime Hook] ✗ Failed to patch {fullname}: {e}")
 
