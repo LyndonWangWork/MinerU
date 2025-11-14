@@ -22,41 +22,47 @@ class TorchCImportHook:
         if fullname in sys.modules:
             return sys.modules[fullname]
 
-        # Import using standard mechanism, but catch docstring errors
-        import importlib
+        # Temporarily remove ourselves from sys.meta_path to avoid recursion
+        sys.meta_path.remove(self)
         try:
-            module = importlib.import_module(fullname)
-        except RuntimeError as e:
-            if 'already has a docstring' in str(e):
-                # Error occurred during import - try to get partially loaded module
-                module = sys.modules.get(fullname)
-                if module is None:
-                    print(f"[Runtime Hook] ✗ torch._C import failed completely: {e}")
+            # Import using standard mechanism, but catch docstring errors
+            import importlib
+            try:
+                module = importlib.import_module(fullname)
+            except RuntimeError as e:
+                if 'already has a docstring' in str(e):
+                    # Error occurred during import - try to get partially loaded module
+                    module = sys.modules.get(fullname)
+                    if module is None:
+                        print(f"[Runtime Hook] ✗ torch._C import failed completely: {e}")
+                        raise
+                    print(f"[Runtime Hook] ⚠ torch._C partially loaded despite error: {e}")
+                else:
                     raise
-                print(f"[Runtime Hook] ⚠ torch._C partially loaded despite error: {e}")
+
+            # Now patch add_docstr function
+            if hasattr(module, 'add_docstr'):
+                _original_add_docstr = module.add_docstr
+
+                def _silent_add_docstr(obj, docstr):
+                    """Wrapper that silently ignores duplicate docstring errors"""
+                    try:
+                        return _original_add_docstr(obj, docstr)
+                    except RuntimeError as e:
+                        if 'already has a docstring' in str(e):
+                            # Silently ignore - docstring already exists
+                            return None
+                        raise
+
+                module.add_docstr = _silent_add_docstr
+                print("[Runtime Hook] ✓ Patched torch._C.add_docstr")
             else:
-                raise
+                print("[Runtime Hook] ⚠ torch._C has no add_docstr attribute")
 
-        # Now patch add_docstr function
-        if hasattr(module, 'add_docstr'):
-            _original_add_docstr = module.add_docstr
-
-            def _silent_add_docstr(obj, docstr):
-                """Wrapper that silently ignores duplicate docstring errors"""
-                try:
-                    return _original_add_docstr(obj, docstr)
-                except RuntimeError as e:
-                    if 'already has a docstring' in str(e):
-                        # Silently ignore - docstring already exists
-                        return None
-                    raise
-
-            module.add_docstr = _silent_add_docstr
-            print("[Runtime Hook] ✓ Patched torch._C.add_docstr")
-        else:
-            print("[Runtime Hook] ⚠ torch._C has no add_docstr attribute")
-
-        return module
+            return module
+        finally:
+            # Re-add ourselves to sys.meta_path
+            sys.meta_path.insert(0, self)
 
 # Install torch._C import hook FIRST (highest priority)
 sys.meta_path.insert(0, TorchCImportHook())
@@ -114,27 +120,33 @@ class LazyModulePatcher:
         if fullname in sys.modules:
             return sys.modules[fullname]
 
-        # Use standard import mechanism
-        import importlib
-        module = importlib.import_module(fullname)
-
-        # Now patch the loaded module
+        # Temporarily remove ourselves from sys.meta_path to avoid recursion
+        sys.meta_path.remove(self)
         try:
-            if fullname == 'transformers.utils.doc':
-                def patched_get_docstring_indentation_level(func):
-                    return 0
-                module.get_docstring_indentation_level = patched_get_docstring_indentation_level
-                print("[Runtime Hook] ✓ Patched transformers.utils.doc")
+            # Use standard import mechanism
+            import importlib
+            module = importlib.import_module(fullname)
 
-            elif fullname == 'torch.utils._config_module':
-                def patched_get_assignments_with_compile_ignored_comments(filepath):
-                    return {}
-                module.get_assignments_with_compile_ignored_comments = patched_get_assignments_with_compile_ignored_comments
-                print("[Runtime Hook] ✓ Patched torch.utils._config_module")
-        except Exception as e:
-            print(f"[Runtime Hook] ✗ Failed to patch {fullname}: {e}")
+            # Now patch the loaded module
+            try:
+                if fullname == 'transformers.utils.doc':
+                    def patched_get_docstring_indentation_level(func):
+                        return 0
+                    module.get_docstring_indentation_level = patched_get_docstring_indentation_level
+                    print("[Runtime Hook] ✓ Patched transformers.utils.doc")
 
-        return module
+                elif fullname == 'torch.utils._config_module':
+                    def patched_get_assignments_with_compile_ignored_comments(filepath):
+                        return {}
+                    module.get_assignments_with_compile_ignored_comments = patched_get_assignments_with_compile_ignored_comments
+                    print("[Runtime Hook] ✓ Patched torch.utils._config_module")
+            except Exception as e:
+                print(f"[Runtime Hook] ✗ Failed to patch {fullname}: {e}")
+
+            return module
+        finally:
+            # Re-add ourselves to sys.meta_path
+            sys.meta_path.insert(0, self)
 
 # Install the import hook
 sys.meta_path.insert(0, LazyModulePatcher())
