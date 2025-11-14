@@ -16,19 +16,34 @@ if sys.platform == 'win32':
         if hasattr(sys, '_MEIPASS'):
             internal_dir = sys._MEIPASS
 
-            # Add torch/lib directory to DLL search path
+            # Add multiple directories to PATH (most reliable method for Windows DLL loading)
+            paths_to_add = []
+
+            # Add the base _internal directory
+            paths_to_add.append(internal_dir)
+
+            # Add torch/lib directory
             torch_lib_dir = os.path.join(internal_dir, 'torch', 'lib')
             if os.path.exists(torch_lib_dir):
-                # Python 3.8+ has os.add_dll_directory
-                if hasattr(os, 'add_dll_directory'):
-                    os.add_dll_directory(torch_lib_dir)
-                    print(f"[Runtime Hook] [OK] Added DLL search path: {torch_lib_dir}")
-                else:
-                    # Fallback: add to PATH
-                    os.environ['PATH'] = torch_lib_dir + os.pathsep + os.environ.get('PATH', '')
-                    print(f"[Runtime Hook] [OK] Added to PATH: {torch_lib_dir}")
+                paths_to_add.append(torch_lib_dir)
+
+            # Add all paths to PATH environment variable (works for all DLL dependencies)
+            if paths_to_add:
+                current_path = os.environ.get('PATH', '')
+                new_path = os.pathsep.join(paths_to_add)
+                os.environ['PATH'] = new_path + os.pathsep + current_path
+                print(f"[Runtime Hook] [OK] Added {len(paths_to_add)} directories to PATH")
+
+            # Also use add_dll_directory for Python 3.8+
+            if hasattr(os, 'add_dll_directory'):
+                for path in paths_to_add:
+                    try:
+                        os.add_dll_directory(path)
+                        print(f"[Runtime Hook] [OK] Added DLL directory: {path}")
+                    except Exception as e:
+                        print(f"[Runtime Hook] [WARN] Could not add DLL directory {path}: {e}")
     except Exception as e:
-        print(f"[Runtime Hook] [WARN] Could not add DLL search paths: {e}")
+        print(f"[Runtime Hook] [WARN] Could not configure DLL search paths: {e}")
 
 # CRITICAL: Intercept torch._C import to patch add_docstr
 # This fixes "RuntimeError: function 'conv1d' already has a docstring" on macOS ARM64
