@@ -7,6 +7,55 @@ which fails when source code is not available (compiled to bytecode)
 import sys
 import inspect
 
+# Patch PyTorch's docstring mechanism for macOS ARM64 compatibility
+# This works around "RuntimeError: function already has a docstring" errors
+def patch_torch_docstrings():
+    """
+    Monkey-patch torch._C to suppress docstring errors.
+    This must be done before torch is imported.
+    """
+    import sys
+
+    # Store the original __import__
+    _original_import = builtins.__import__
+
+    def patched_import(name, *args, **kwargs):
+        """Intercept torch._C import and patch it"""
+        module = _original_import(name, *args, **kwargs)
+
+        # If we're importing torch._C, patch its add_docstr function
+        if name == 'torch._C' or (name == 'torch' and hasattr(module, '_C')):
+            try:
+                torch_c = module._C if hasattr(module, '_C') else module
+
+                # Patch add_docstr to silently ignore docstring conflicts
+                if hasattr(torch_c, 'add_docstr'):
+                    original_add_docstr = torch_c.add_docstr
+
+                    def silent_add_docstr(obj, docstr):
+                        """Wrapper that catches docstring conflicts"""
+                        try:
+                            return original_add_docstr(obj, docstr)
+                        except RuntimeError as e:
+                            if 'already has a docstring' in str(e):
+                                # Silently ignore - docstring is already set
+                                print(f"[Runtime Hook] Suppressed duplicate docstring for {obj}")
+                                return
+                            raise
+
+                    torch_c.add_docstr = silent_add_docstr
+                    print("[Runtime Hook] Successfully patched torch._C.add_docstr")
+            except Exception as e:
+                print(f"[Runtime Hook] Warning: Could not patch torch._C: {e}")
+
+        return module
+
+    # Replace the built-in import
+    builtins.__import__ = patched_import
+
+import builtins
+patch_torch_docstrings()
+
 # Monkey-patch inspect.getsource and related functions to handle frozen modules
 _original_getsource = inspect.getsource
 _original_getsourcelines = inspect.getsourcelines
